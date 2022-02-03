@@ -116,11 +116,13 @@ contract OVRMarketplace is
     event OfferCancelled(
         uint256 indexed nftId,
         address indexed sender,
+        address indexed to,
         uint256 timestamp
     );
     event OfferAccepted(
         address indexed owner,
         uint256 indexed nftId,
+        address indexed to,
         uint256 value,
         uint256 timestamp
     );
@@ -306,6 +308,7 @@ contract OVRMarketplace is
         isLandOwner(_nftId)
         whenNotPaused
     {
+        address to = bestOffers[_nftId].from;
         require(bestOffers[_nftId].from != address(0), "No offers");
         require(
             token.transfer(_msgSender(), bestOffers[_nftId].value),
@@ -324,7 +327,7 @@ contract OVRMarketplace is
         delete bestOffers[_nftId];
         delete selling[_nftId];
 
-        emit OfferAccepted(_msgSender(), _nftId, value, currentTimestamp);
+        emit OfferAccepted(_msgSender(), _nftId, to, value, currentTimestamp);
     }
 
     /**
@@ -335,7 +338,15 @@ contract OVRMarketplace is
         isLandOwner(_nftId)
         whenNotPaused
     {
-        require(landOnSelling[_nftId] == false, "Already on selling");
+        /**
+         * Give the owner the ability to overwrite the sale if
+         * the old owner did not cancel the previous sale.
+         **/
+        require(
+            landOnSelling[_nftId] == false ||
+                selling[_nftId].from != OVRLand.ownerOf(_nftId),
+            "Already on selling"
+        );
         uint256 fees = _value.mul(feePerc).div(1e4);
         uint256 currentTimestamp = _now();
         selling[_nftId].fee = fees;
@@ -427,8 +438,9 @@ contract OVRMarketplace is
     function cancelOffer(uint256 _nftId) public isLandOwnerOrOfferer(_nftId) {
         uint256 currentTimestamp = _now();
         moneyBack(_nftId);
+        address to = bestOffers[_nftId].from;
         delete bestOffers[_nftId];
-        emit OfferCancelled(_nftId, _msgSender(), currentTimestamp);
+        emit OfferCancelled(_nftId, _msgSender(), to, currentTimestamp);
     }
 
     /**
