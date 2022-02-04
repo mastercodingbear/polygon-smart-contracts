@@ -9,3 +9,4 @@ typechain
 cache
 artifacts
 scripts/alpha_mint_lands.json
+scripts/edited_alpha_mint_lands.json

@@ -74,7 +74,8 @@ describe.only("OVRLand ERC721 - TEST", async () => {
         ovrAddress,
         ovrLand.address,
         ovrLandContainer.address,
-        500
+        500,
+        owner.address
       );
 
       await ovrLandContainer.setMarketplaceAddress(ovrMarketplace.address);

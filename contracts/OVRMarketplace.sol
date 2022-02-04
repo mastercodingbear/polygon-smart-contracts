@@ -44,11 +44,21 @@ contract OVRMarketplace is
 
     /* ========== INITIALIZER ========== */
 
+    /**
+     * @dev Called on deployment by deployProxy
+     *
+     * @param _tokenAddress The ERC20 token address
+     * @param _OVRLandAddress The ERC721 token address
+     * @param _OVRContainer The ERC721 Container of OVRLands
+     * @param _feeX100 Percentage fee
+     * @param _feeReciver Who receive fees
+     */
     function initialize(
         address _tokenAddress,
         address _OVRLandAddress,
         address _OVRContainer,
-        uint256 _feeX100
+        uint256 _feeX100,
+        address _feeReciver
     ) external initializer {
         token = IERC20Upgradeable(_tokenAddress);
         OVRLand = IERC721Upgradeable(_OVRLandAddress);
@@ -58,7 +68,7 @@ contract OVRMarketplace is
         __ReentrancyGuard_init();
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
         feePerc = _feeX100; // 5% -> 500
-        feeReciver = _msgSender(); // TODO PASS INTO THE INITIALIZE
+        feeReciver = _feeReciver;
     }
 
     function addAdminRole(address _admin) public onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -202,7 +212,7 @@ contract OVRMarketplace is
         require(
             selling[_nftId].from == OVRLand.ownerOf(_nftId),
             "Not for sale"
-        ); //L'owner attuale non è chi l'ha messo in vendita
+        );
         _;
     }
 
@@ -211,12 +221,18 @@ contract OVRMarketplace is
             sellingContainer[_containerId].from ==
                 OVRContainer.ownerOf(_containerId),
             "Not for sale"
-        ); //L'owner attuale non è chi l'ha messo in vendita
+        );
         _;
     }
 
     /* ========== VIEW FUNCTIONS ========== */
 
+    /**
+     * @dev Get the last buy offer
+     * @param _nftId OVRLand token id
+     *
+     * @return _offer Offer
+     */
     function lastOffer(uint256 _nftId)
         public
         view
@@ -225,6 +241,12 @@ contract OVRMarketplace is
         return bestOffers[_nftId];
     }
 
+    /**
+     * @dev Get the last sell offer
+     * @param _nftId token id
+     *
+     * @return _sell OnSell
+     */
     function sellView(uint256 _nftId)
         public
         view
@@ -234,6 +256,12 @@ contract OVRMarketplace is
         return selling[_nftId];
     }
 
+    /**
+     * @dev Check if OVRLand is on selling
+     * @param _landId token id
+     *
+     * @return _onSelling bool
+     */
     function landIsOnSelling(uint256 _landId)
         public
         view
@@ -242,6 +270,12 @@ contract OVRMarketplace is
         return landOnSelling[_landId];
     }
 
+    /**
+     * @dev Check if OVRLandContainer is on selling
+     * @param _containerId token id
+     *
+     * @return _onSelling bool
+     */
     function containerIsOnSelling(uint256 _containerId)
         public
         view
@@ -250,6 +284,11 @@ contract OVRMarketplace is
         return containerOnSelling[_containerId];
     }
 
+    /**
+     * @dev Get current container sell order
+     * @param _containerId OVRLandContainer tokenId
+     * @return _sell OnSellContainer
+     */
     function sellViewContainer(uint256 _containerId)
         public
         view
@@ -261,10 +300,18 @@ contract OVRMarketplace is
 
     /* ========== MUTATIVE FUNCTIONS ========== */
 
+    /**
+     * @dev Update fee receiver address
+     * @param _feeAddr new address
+     */
     function setFeeAddr(address _feeAddr) public onlyRole(DEFAULT_ADMIN_ROLE) {
         feeReciver = _feeAddr;
     }
 
+    /**
+     * @dev Setup OVRLandContainer address
+     * @param _addr new address
+     */
     function setOVRLandContainerAddress(address _addr)
         public
         onlyRole(DEFAULT_ADMIN_ROLE)
@@ -273,9 +320,12 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice function to place an offer for a specified land by everyone
-     * @dev if a bid is outbid, the bidder of the outbid bid will get back the tokens thanks to the moneyBack() function;
+     * @dev To place an offer for a specified land by everyone
+     * @notice if a bid is outbid, the bidder of the outbid bid will get back the
+     * tokens thanks to the moneyBack() function;
      * the bidder will send tokens to the contract (this to avoid fake offers)
+     * @param _nftId OVRLand tokenId
+     * @param _value offer amount
      */
     function placeOffer(uint256 _nftId, uint256 _value) public whenNotPaused {
         require(_value > bestOffers[_nftId].value, "Offer is too low!");
@@ -300,9 +350,9 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice this function can be called by the owner of the land to accept an offer of selling
-     * @dev it will receive the tokens from the contract because the bidder sent money to this contract when made the offer
-     **/
+     * @dev To accept a sell offer created buy land owner
+     * @param _nftId OVRLand tokenId
+     */
     function acceptOffer(uint256 _nftId)
         public
         isLandOwner(_nftId)
@@ -331,8 +381,10 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice this function can be called by the owner of the land to sell it
-     **/
+     * @dev This function can be called by the owner of the land to sell it
+     * @param _nftId OVRLand tokenId
+     * @param _value sell offer amount
+     */
     function sell(uint256 _nftId, uint256 _value)
         public
         isLandOwner(_nftId)
@@ -359,14 +411,21 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice this function can be called by the owner of a container to sell a it
-     *
-     **/
+     * @dev Can be called by the owner of a container
+     * @param _containerId OVRLandContainer tokenId
+     * @param _value amount
+     */
     function sellContainer(uint256 _containerId, uint256 _value)
         public
         isContainerOwner(_containerId)
         whenNotPaused
     {
+        require(
+            containerOnSelling[_containerId] == false ||
+                sellingContainer[_containerId].from !=
+                OVRContainer.ownerOf(_containerId),
+            "Already on selling"
+        );
         uint256 fees = _value.mul(feePerc).div(1e4);
         sellingContainer[_containerId].fee = fees;
         sellingContainer[_containerId].landId = OVRContainer.childsOfParent(
@@ -380,9 +439,11 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice this function can be called by everyone to buy a container which was previously put up for sale by the owner
-     * @dev if the current owner of all the lands is not the same person who put the lands up for sale, the container cannot be bought
-     **/
+     * @notice if the current owner of all the OVRLands is not the same
+     * user who put the OVRLands up for sale, container cannot be bought
+     * @dev This function can be called by everyone to buy a container which was previously put up for sale by the owner
+     * @param _containerId OVRLandContainer tokenId
+     */
     function buyContainer(uint256 _containerId)
         public
         whenNotPaused
@@ -434,6 +495,7 @@ contract OVRMarketplace is
     /**
      * @notice function to cancel an offer by the owner of the land or the offeror
      * @dev it will give back the money to the offeror
+     * @param _nftId OVRLand tokenId
      */
     function cancelOffer(uint256 _nftId) public isLandOwnerOrOfferer(_nftId) {
         uint256 currentTimestamp = _now();
@@ -444,8 +506,9 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice delete container on selling, can be called only by the person that own the container
-     **/
+     * @dev Delete OVRLandContainer on selling, can be called only by the owner
+     * @param _containerId OVRLandContainer tokenId
+     */
     function cancelSellContainer(uint256 _containerId)
         public
         isContainerOwner(_containerId)
@@ -461,8 +524,10 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice change price container on selling, can be called only by the person that own the container
-     **/
+     * @dev Change OVRLandContainer price on selling, can be called only by the owner
+     * @param _containerId OVRLandContainer tokenId
+     * @param _price amount
+     */
     function updatePriceContainer(uint256 _containerId, uint256 _price)
         public
         isContainerOwner(_containerId)
@@ -479,8 +544,10 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice change price land on selling, can be called only by the person that own the land
-     **/
+     * @dev Change OVRLand price on selling, can be called only by the owner
+     * @param _nftId OVRLand tokenId
+     * @param _price amount
+     */
     function updatePriceLand(uint256 _nftId, uint256 _price)
         public
         isLandOwner(_nftId)
@@ -494,8 +561,9 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice delete land on selling, can be called only by the person that own the land
-     **/
+     * @dev Delete OVRLand on selling, can be called only by the owner
+     * @param _nftId OVRLand tokenId
+     */
     function cancelSell(uint256 _nftId) public isLandOwner(_nftId) {
         uint256 currentTimestamp = _now();
         landOnSelling[_nftId] = false;
@@ -504,9 +572,10 @@ contract OVRMarketplace is
     }
 
     /**
-     * @notice this function can be called by everyone to buy a land which was previously put up for sale by the owner
+     * @notice This function can be called by everyone to buy OVRLand which was previously put up for sale by the owner
      * @dev if the current owner of the land is not the same person who put the land up for sale, the land cannot be bought
-     **/
+     * @param _nftId OVRLand tokenId
+     */
     function buy(uint256 _nftId) public whenNotPaused onSelling(_nftId) {
         uint256 minBalance = selling[_nftId].value.add(selling[_nftId].fee);
         require(
@@ -544,8 +613,9 @@ contract OVRMarketplace is
     /* ========== INTERNAL FUNCTIONS ========== */
 
     /**
-     * @notice this function will give back money to bidders when they cancel their offer, or their offer is outbid
-     **/
+     * @dev This function will give back money to bidders when they cancel their offer, or their offer is outbid
+     * @param _nftId OVRLand tokenId
+     */
     function moneyBack(uint256 _nftId) internal nonReentrant {
         if (bestOffers[_nftId].from != address(0)) {
             uint256 oldFee = bestOffers[_nftId].fee;

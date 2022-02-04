@@ -9,15 +9,16 @@ async function main() {
   // await hre.run('compile');
 
   // https://github.com/maticnetwork/static/blob/master/network/mainnet/v1/index.json#L104
-  const marketplace = await ethers.getContractFactory("OVRMarketplaceRoles");
+  const marketplace = await ethers.getContractFactory("OVRMarketplace");
   const OVRToken = "0xc9a4faafa5ec137c97947df0335e8784440f90b5";
   const OVRLand = "0x771468b89d8218d7f9b329DFbf4492320Ce28b8d";
   const OVRLandContainer = "0x1a5006044D89e73919239e7dc3455cF5512CBC27";
+  const feeReceiver = "TODOOOOO";
 
   console.log("Deploying implementation(first) and ERC1967Proxy(second)...");
   const OVRMarketplace = await upgrades.deployProxy(
     marketplace,
-    [OVRToken, OVRLand, OVRLandContainer, 1000],
+    [OVRToken, OVRLand, OVRLandContainer, 500, feeReceiver],
     {
       initializer: "initialize",
       kind: "uups",

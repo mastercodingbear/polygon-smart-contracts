@@ -17,7 +17,7 @@ import "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
 import "../interfaces/IMarketplace.sol";
 import "../interfaces/IRenting.sol";
 
-contract OVRLandContainer is
+contract OVRLandContainerV2 is
     UUPSUpgradeable,
     ERC721Upgradeable,
     ERC721EnumerableUpgradeable,
@@ -38,10 +38,6 @@ contract OVRLandContainer is
     IMarketplace public marketplace;
     IRenting public renting;
 
-    /**
-     * @dev Called on deployment by deployProxy
-     * @param _OVRLand The ERC721 token address
-     */
     function initialize(IERC721Upgradeable _OVRLand) external initializer {
         __AccessControl_init();
         __ERC721Enumerable_init();
@@ -65,18 +61,6 @@ contract OVRLandContainer is
         address indexed owner,
         uint256 timestamp
     );
-    event LandAddedToContainer(
-        uint256 indexed landId,
-        address indexed owner,
-        uint256 indexed containerId,
-        uint256 timestamp
-    );
-    event LandRemovedFromContainer(
-        uint256 indexed landId,
-        address indexed owner,
-        uint256 indexed containerId,
-        uint256 timestamp
-    );
 
     //10 => 0,1,2,3,4 => 10,11,12,13,14
     //containerId => indexLands => LandId
@@ -89,8 +73,7 @@ contract OVRLandContainer is
     mapping(uint256 => uint256) public landIndex;
 
     /**
-     * @dev Verify that the caller is the owner of the container
-     * @param _containerId OVRLandContainer tokenId
+     * @notice verify that the caller is the owner of the container
      */
     modifier isContainerOwner(uint256 _containerId) {
         require(
@@ -101,8 +84,7 @@ contract OVRLandContainer is
     }
 
     /**
-     * @dev Verify that the lands sent aren't on renting or on selling
-     * @param _landId OVRLand tokenId
+     * @notice verify that the lands sent aren't on renting or on selling
      */
     modifier landsFree(uint256[] memory _landId) {
         uint256 length = _landId.length;
@@ -142,42 +124,7 @@ contract OVRLandContainer is
     }
 
     /**
-     * @dev Verify that the land sent isn't on renting or on selling
-     * @param _landId OVRLand tokenId
-     */
-    modifier landFree(uint256 _landId) {
-        if (
-            address(marketplace) != address(0) && address(renting) == address(0)
-        ) {
-            require(
-                marketplace.landIsOnSelling(_landId) == false,
-                "OVRLandContainer: One or more lands are on selling"
-            );
-        } else if (
-            address(marketplace) == address(0) && address(renting) != address(0)
-        ) {
-            require(
-                renting.landIsOnRenting(_landId) == false,
-                "OVRLandContainer: One or more lands are on renting"
-            );
-        } else if (
-            address(marketplace) != address(0) && address(renting) != address(0)
-        ) {
-            require(
-                renting.landIsOnRenting(_landId) == false,
-                "OVRLandContainer: One or more lands are on renting"
-            );
-            require(
-                marketplace.landIsOnSelling(_landId) == false,
-                "OVRLandContainer: One or more lands are on selling"
-            );
-        }
-        _;
-    }
-
-    /**
-     * @dev Verify that the container sent isn't on renting or on selling
-     * @param _containerId OVRLandContainer tokenId
+     * @notice verify that the container sent isn't on renting or on selling
      */
     modifier containerFree(uint256 _containerId) {
         if (
@@ -211,10 +158,9 @@ contract OVRLandContainer is
     }
 
     /**
-     * @dev Given a landId return the owner
-     * @param _landId OVRLand tokenId
-     * @return owner Owner
+     * @return owner , given a landId return the owner
      */
+
     function ownerOfChild(uint256 _landId) public view returns (address owner) {
         uint256 containerOfChild = landToContainer[_landId];
         address ownerAddressOfChild = ownerOf(containerOfChild);
@@ -226,9 +172,7 @@ contract OVRLandContainer is
     }
 
     /**
-     * @dev Given a containerId return the lands inside
-     * @param _containerId OVRLandContainer tokenId
-     * @return lands OVRLands inside specific OVRLandContainer
+     * @return lands , given a containerId return the lands inside
      */
     function childsOfParent(uint256 _containerId)
         public
@@ -248,8 +192,7 @@ contract OVRLandContainer is
     }
 
     /**
-     * @dev Function to set marketplace address, can be called only by an admin
-     * @param _marketplace OVRMarkeplace address
+     * @notice function to set marketplace address, can be called only by an admin
      */
     function setMarketplaceAddress(IMarketplace _marketplace)
         public
@@ -263,8 +206,7 @@ contract OVRLandContainer is
     }
 
     /**
-     * @dev Function to set renting address, can be called only by an admin
-     * @param _renting OVRRenting address
+     * @notice function to set renting address, can be called only by an admin
      */
     function setRentingAddress(IRenting _renting)
         public
@@ -275,98 +217,7 @@ contract OVRLandContainer is
     }
 
     /**
-     * @dev Function to remove one OVRLand from a OVRLandContainer
-     * @param _containerId OVRLandContainer tokenId
-     * @param _idLand OVRLand tokenId
-     */
-    function removeLandFromContainer(uint256 _containerId, uint256 _idLand)
-        public
-        isContainerOwner(_containerId)
-        containerFree(_containerId)
-    {
-        require(
-            landToContainer[_idLand] == _containerId,
-            "OVRLand not inside container"
-        );
-        require(
-            _exists(_containerId),
-            "ERC721: query for nonexistent container"
-        );
-        // land is not inside the container anymore
-        delete landToContainer[_idLand];
-        //decrease number of lands in the container
-        uint256 currentNumber = nLandsInContainer[_containerId];
-        nLandsInContainer[_containerId] = currentNumber.sub(1);
-        //delete index of land
-        uint256 index = landIndex[_idLand];
-        delete landIndex[_idLand];
-        // decrease lands index and positions inside the container for lands that were after the land removed
-        /**  @dev if currentNumber - 1 ! > index it means that user are trying to remove the last land of the container
-         *    so we don't need to decrease indexes and positions for lands after that 'cause there aren't
-         */
-        if (currentNumber - 1 > index) {
-            for (uint256 i = index + 1; i < currentNumber; i++) {
-                landIndex[containerToLands[_containerId][i]] = landIndex[
-                    containerToLands[_containerId][i]
-                ].sub(1);
-                containerToLands[_containerId][i - 1] = containerToLands[
-                    _containerId
-                ][i];
-            }
-            delete containerToLands[_containerId][currentNumber - 1];
-        }
-        OVRLand.transferFrom(address(this), _msgSender(), _idLand);
-        //if there is only 1 land inside the container, delete it
-        if (currentNumber - 1 == 1) {
-            // _burn(_containerId);
-            deleteContainer(_containerId);
-        }
-        emit LandRemovedFromContainer(
-            _idLand,
-            _msgSender(),
-            _containerId,
-            block.timestamp
-        );
-    }
-
-    /**
-     * @dev Function to add one land to a container
-     * @param _containerId OVRLandContainer tokenId
-     * @param _idLand OVRLand tokenId
-     */
-    function addLandToContainer(uint256 _containerId, uint256 _idLand)
-        public
-        isContainerOwner(_containerId)
-        landFree(_idLand)
-    {
-        require(
-            _exists(_containerId),
-            "ERC721: query for nonexistent container"
-        );
-        //transfer land from user to this contract
-        OVRLand.transferFrom(_msgSender(), address(this), _idLand);
-        //if there isn't any land inside the container, burn the container
-        //set container for land
-        landToContainer[_idLand] = _containerId;
-        //increase number of lands in the container
-        uint256 currentNumber = nLandsInContainer[_containerId];
-        nLandsInContainer[_containerId] = currentNumber.add(1);
-        //add index of land
-        landIndex[_idLand] = currentNumber;
-        //insert land inside the land
-        containerToLands[_containerId][currentNumber] = _idLand;
-
-        emit LandAddedToContainer(
-            _idLand,
-            _msgSender(),
-            _containerId,
-            block.timestamp
-        );
-    }
-
-    /**
-     * @dev Function to create a container, it needs an array of OVRLands
-     * @param _landId [tokenId, tokenId, ...]
+     * @notice function to create a container, it needs an array of lands
      */
     function createContainer(uint256[] memory _landId)
         public
@@ -390,8 +241,7 @@ contract OVRLandContainer is
     }
 
     /**
-     * @dev Function to destroy a OVRLandContainer
-     * @param _containerId OVRLandContainer tokenId
+     * @notice function to destroy a container
      */
     function deleteContainer(uint256 _containerId)
         public
